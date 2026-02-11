@@ -1,0 +1,17 @@
+{
+  "name": "citybiker",
+  "version": "1.0.0",
+  "description": "Browser-based bike route planner for Gothenburg with traffic light penalties",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4"
+  }
+}

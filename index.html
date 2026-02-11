@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CityBiker – Gothenburg Bike Route Planner</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="sidebar">
+      <h1>CityBiker</h1>
+      <p class="subtitle">Gothenburg Bike Route Planner</p>
+
+      <div id="status-bar">
+        <span id="status-text">Click the map to set start point</span>
+      </div>
+
+      <div id="controls">
+        <button id="btn-load" title="Load the bike network for Gothenburg">Load Network</button>
+        <button id="btn-clear" title="Clear the current route">Clear Route</button>
+      </div>
+
+      <div id="route-info" class="hidden">
+        <h2>Route Summary</h2>
+        <div class="info-row">
+          <span class="label">Distance:</span>
+          <span id="route-distance">—</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Estimated time:</span>
+          <span id="route-time">—</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Traffic lights:</span>
+          <span id="route-lights">—</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Traffic light penalty:</span>
+          <span id="route-light-penalty">—</span>
+        </div>
+      </div>
+
+      <div id="legend">
+        <h2>Legend</h2>
+        <div class="legend-item">
+          <span class="legend-swatch" style="background: #2196F3;"></span> Route
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch" style="background: #e53935;"></span> Traffic lights
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch" style="background: #4CAF50;"></span> Start
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch" style="background: #F44336;"></span> End
+        </div>
+      </div>
+
+      <div id="settings">
+        <h2>Settings</h2>
+        <div class="setting-row">
+          <label for="light-penalty">Traffic light penalty (seconds):</label>
+          <input type="number" id="light-penalty" value="60" min="0" max="300" step="5" />
+        </div>
+        <div class="setting-row">
+          <label>
+            <input type="checkbox" id="show-lights" checked />
+            Show traffic lights
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div id="map"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
