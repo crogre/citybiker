@@ -5,7 +5,214 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CityBiker – Gothenburg Bike Route Planner</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/src/style.css" />
+  <style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+}
+
+#sidebar {
+  width: 320px;
+  min-width: 320px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#sidebar h1 {
+  font-size: 1.5rem;
+  color: #64b5f6;
+}
+
+.subtitle {
+  font-size: 0.85rem;
+  color: #888;
+  margin-top: -8px;
+}
+
+#sidebar h2 {
+  font-size: 0.95rem;
+  color: #90caf9;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#status-bar {
+  background: #16213e;
+  border-left: 3px solid #2196F3;
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+#status-bar.loading {
+  border-left-color: #ff9800;
+}
+
+#status-bar.error {
+  border-left-color: #f44336;
+}
+
+#status-bar.success {
+  border-left-color: #4caf50;
+}
+
+#controls {
+  display: flex;
+  gap: 8px;
+}
+
+#controls button {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+#btn-load {
+  background: #2196F3;
+  color: white;
+}
+
+#btn-load:hover {
+  background: #1976D2;
+}
+
+#btn-load:disabled {
+  background: #555;
+  cursor: not-allowed;
+}
+
+#btn-clear {
+  background: #424242;
+  color: #e0e0e0;
+}
+
+#btn-clear:hover {
+  background: #616161;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 0.85rem;
+}
+
+.info-row .label {
+  color: #888;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  padding: 2px 0;
+}
+
+.legend-swatch {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.setting-row {
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+}
+
+.setting-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.setting-row input[type="number"] {
+  width: 70px;
+  padding: 4px 6px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #16213e;
+  color: #e0e0e0;
+  margin-top: 4px;
+}
+
+.setting-row input[type="checkbox"] {
+  accent-color: #2196F3;
+}
+
+#map {
+  flex: 1;
+  height: 100vh;
+}
+
+.leaflet-popup-content {
+  font-size: 0.85rem;
+}
+
+#status-bar.loading #status-text::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ff9800;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  #app {
+    flex-direction: column;
+  }
+
+  #sidebar {
+    width: 100%;
+    min-width: unset;
+    height: auto;
+    max-height: 35vh;
+    padding: 12px;
+  }
+
+  #map {
+    height: 65vh;
+  }
+}
+  </style>
 </head>
 <body>
   <div id="app">
@@ -14,7 +221,7 @@
       <p class="subtitle">Gothenburg Bike Route Planner</p>
 
       <div id="status-bar">
-        <span id="status-text">Click the map to set start point</span>
+        <span id="status-text">Click "Load Network" to get started</span>
       </div>
 
       <div id="controls">
@@ -76,6 +283,557 @@
     <div id="map"></div>
   </div>
 
-  <script type="module" src="/src/main.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+// ═══════════════════════════════════════════════════════════════════════
+// utils
+// ═══════════════════════════════════════════════════════════════════════
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatTime(seconds) {
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return mins + ' min';
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return hours + 'h ' + remMins + 'min';
+}
+
+function formatDistance(meters) {
+  if (meters < 1000) return Math.round(meters) + ' m';
+  return (meters / 1000).toFixed(1) + ' km';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// overpass
+// ═══════════════════════════════════════════════════════════════════════
+
+var GOTHENBURG_BBOX = '57.65,11.85,57.78,12.10';
+
+function buildQuery(bbox) {
+  return '[out:json][timeout:60];\n(\n' +
+    '  way["highway"~"^(cycleway|residential|tertiary|tertiary_link|secondary|secondary_link|primary|primary_link|trunk|trunk_link|living_street|pedestrian|unclassified|service)$"](' + bbox + ');\n' +
+    '  way["highway"~"^(path|track)$"]["surface"~"^(paved|asphalt|concrete|paving_stones|sett|cobblestone|compacted)$"](' + bbox + ');\n' +
+    '  node["highway"="traffic_signals"](' + bbox + ');\n' +
+    ');\nout body;\n>;\nout skel qt;';
+}
+
+async function fetchOSMData(bbox, onProgress) {
+  var query = buildQuery(bbox);
+  var url = 'https://overpass-api.de/api/interpreter';
+
+  if (onProgress) onProgress('Fetching bike network from OpenStreetMap...');
+
+  var response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'data=' + encodeURIComponent(query),
+  });
+
+  if (!response.ok) {
+    throw new Error('Overpass API error: ' + response.status + ' ' + response.statusText);
+  }
+
+  if (onProgress) onProgress('Parsing response...');
+
+  var data = await response.json();
+  return data.elements;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// graph
+// ═══════════════════════════════════════════════════════════════════════
+
+var HIGHWAY_SPEEDS = {
+  cycleway: 18, path: 12, track: 10, living_street: 16, residential: 16,
+  pedestrian: 10, unclassified: 15, service: 12, tertiary: 15,
+  tertiary_link: 14, secondary: 13, secondary_link: 12, primary: 11,
+  primary_link: 10, trunk: 8, trunk_link: 8,
+};
+
+var DEFAULT_SPEED = 14;
+
+var CYCLEWAY_TAG_BONUS = {
+  lane: 1.2, track: 1.3, shared_lane: 1.1, opposite_lane: 1.15, opposite_track: 1.25,
+};
+
+var ROUGH_SURFACES = new Set([
+  'ground', 'dirt', 'grass', 'mud', 'sand', 'gravel', 'fine_gravel',
+  'earth', 'woodchips', 'snow', 'ice', 'rock', 'unpaved',
+]);
+
+function buildGraph(elements, onProgress) {
+  if (onProgress) onProgress('Building routing graph...');
+
+  var nodes = new Map();
+  var trafficSignalIds = new Set();
+
+  for (var i = 0; i < elements.length; i++) {
+    var el = elements[i];
+    if (el.type === 'node') {
+      var isSignal = el.tags && el.tags.highway === 'traffic_signals';
+
+      // Don't overwrite a tagged node with a skeleton (tagless) version
+      var existing = nodes.get(el.id);
+      if (existing && existing.isTrafficSignal && !isSignal) {
+        existing.lat = el.lat;
+        existing.lon = el.lon;
+        continue;
+      }
+
+      nodes.set(el.id, { lat: el.lat, lon: el.lon, isTrafficSignal: !!isSignal });
+      if (isSignal) trafficSignalIds.add(el.id);
+    }
+  }
+
+  var adjacency = new Map();
+
+  function addEdge(from, to, distance, speed) {
+    if (!adjacency.has(from)) adjacency.set(from, []);
+    adjacency.get(from).push({ target: to, distance: distance, speed: speed });
+  }
+
+  var edgeCount = 0;
+
+  for (var i = 0; i < elements.length; i++) {
+    var el = elements[i];
+    if (el.type !== 'way' || !el.tags || !el.nodes || el.nodes.length < 2) continue;
+
+    var highway = el.tags.highway;
+    if (!highway) continue;
+
+    var bicycle = el.tags.bicycle;
+    if (bicycle === 'no' || bicycle === 'dismount') continue;
+
+    var surface = el.tags.surface;
+    if (surface && ROUGH_SURFACES.has(surface)) continue;
+
+    if (el.tags['mtb:scale']) continue;
+
+    var baseSpeed = HIGHWAY_SPEEDS[highway] || DEFAULT_SPEED;
+
+    var cycleway = el.tags.cycleway;
+    if (cycleway && CYCLEWAY_TAG_BONUS[cycleway]) {
+      baseSpeed *= CYCLEWAY_TAG_BONUS[cycleway];
+    }
+
+    if (bicycle === 'designated' || bicycle === 'yes') {
+      baseSpeed *= 1.1;
+    }
+
+    var oneway = el.tags.oneway;
+    var onewayBicycle = el.tags['oneway:bicycle'];
+    var isOneway = onewayBicycle === 'yes' || (oneway === 'yes' && onewayBicycle !== 'no');
+    var isReverseOneway = oneway === '-1';
+
+    for (var j = 0; j < el.nodes.length - 1; j++) {
+      var fromId = el.nodes[j];
+      var toId = el.nodes[j + 1];
+      var fromNode = nodes.get(fromId);
+      var toNode = nodes.get(toId);
+      if (!fromNode || !toNode) continue;
+
+      var dist = haversine(fromNode.lat, fromNode.lon, toNode.lat, toNode.lon);
+
+      if (isReverseOneway) {
+        addEdge(toId, fromId, dist, baseSpeed);
+      } else if (isOneway) {
+        addEdge(fromId, toId, dist, baseSpeed);
+      } else {
+        addEdge(fromId, toId, dist, baseSpeed);
+        addEdge(toId, fromId, dist, baseSpeed);
+      }
+      edgeCount++;
+    }
+  }
+
+  if (onProgress) {
+    onProgress(
+      'Graph built: ' + nodes.size.toLocaleString() + ' nodes, ' +
+      edgeCount.toLocaleString() + ' edges, ' +
+      trafficSignalIds.size.toLocaleString() + ' traffic lights'
+    );
+  }
+
+  return { nodes: nodes, adjacency: adjacency, trafficSignalIds: trafficSignalIds };
+}
+
+function findNearestNode(nodes, adjacency, lat, lon) {
+  var bestId = null;
+  var bestDist = Infinity;
+  for (var [id, node] of nodes) {
+    if (!adjacency.has(id)) continue;
+    var d = haversine(lat, lon, node.lat, node.lon);
+    if (d < bestDist) { bestDist = d; bestId = id; }
+  }
+  return { id: bestId, distance: bestDist };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// router – A* with custom bike cost function
+// ═══════════════════════════════════════════════════════════════════════
+
+function MinHeap() {
+  this.heap = [];
+}
+MinHeap.prototype.push = function(id, cost) {
+  this.heap.push({ id: id, cost: cost });
+  this._bubbleUp(this.heap.length - 1);
+};
+MinHeap.prototype.pop = function() {
+  var top = this.heap[0];
+  var last = this.heap.pop();
+  if (this.heap.length > 0 && last) { this.heap[0] = last; this._sinkDown(0); }
+  return top;
+};
+MinHeap.prototype.size = function() { return this.heap.length; };
+MinHeap.prototype._bubbleUp = function(i) {
+  while (i > 0) {
+    var parent = (i - 1) >> 1;
+    if (this.heap[i].cost < this.heap[parent].cost) {
+      var tmp = this.heap[i]; this.heap[i] = this.heap[parent]; this.heap[parent] = tmp;
+      i = parent;
+    } else break;
+  }
+};
+MinHeap.prototype._sinkDown = function(i) {
+  var n = this.heap.length;
+  while (true) {
+    var smallest = i;
+    var left = 2 * i + 1;
+    var right = 2 * i + 2;
+    if (left < n && this.heap[left].cost < this.heap[smallest].cost) smallest = left;
+    if (right < n && this.heap[right].cost < this.heap[smallest].cost) smallest = right;
+    if (smallest !== i) {
+      var tmp = this.heap[i]; this.heap[i] = this.heap[smallest]; this.heap[smallest] = tmp;
+      i = smallest;
+    } else break;
+  }
+};
+
+function edgeCost(edge, targetNode, trafficLightPenalty) {
+  var speedMs = (edge.speed * 1000) / 3600;
+  var cost = edge.distance / speedMs;
+  if (targetNode && targetNode.isTrafficSignal) cost += trafficLightPenalty;
+  return cost;
+}
+
+function heuristic(nodeA, nodeB) {
+  var dist = haversine(nodeA.lat, nodeA.lon, nodeB.lat, nodeB.lon);
+  var maxSpeedMs = (20 * 1000) / 3600;
+  return dist / maxSpeedMs;
+}
+
+function findRoute(nodes, adjacency, startId, endId, trafficLightPenalty) {
+  var endNode = nodes.get(endId);
+  if (!endNode) return null;
+
+  var gScore = new Map();
+  var prev = new Map();
+  var visited = new Set();
+  var pq = new MinHeap();
+
+  gScore.set(startId, 0);
+  pq.push(startId, heuristic(nodes.get(startId), endNode));
+
+  while (pq.size() > 0) {
+    var entry = pq.pop();
+    var current = entry.id;
+
+    if (current === endId) {
+      return reconstructRoute(nodes, prev, startId, endId, gScore.get(endId));
+    }
+
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    var edges = adjacency.get(current);
+    if (!edges) continue;
+
+    var currentG = gScore.get(current);
+
+    for (var i = 0; i < edges.length; i++) {
+      var edge = edges[i];
+      if (visited.has(edge.target)) continue;
+
+      var targetNode = nodes.get(edge.target);
+      if (!targetNode) continue;
+
+      var cost = edgeCost(edge, targetNode, trafficLightPenalty);
+      var tentativeG = currentG + cost;
+
+      if (!gScore.has(edge.target) || tentativeG < gScore.get(edge.target)) {
+        gScore.set(edge.target, tentativeG);
+        prev.set(edge.target, { from: current, distance: edge.distance });
+        var f = tentativeG + heuristic(targetNode, endNode);
+        pq.push(edge.target, f);
+      }
+    }
+  }
+
+  return null;
+}
+
+function reconstructRoute(nodes, prev, startId, endId, totalCost) {
+  var path = [];
+  var current = endId;
+  var totalDistance = 0;
+  var trafficLights = 0;
+
+  while (current !== undefined) {
+    var node = nodes.get(current);
+    path.push({ id: current, lat: node.lat, lon: node.lon });
+
+    if (node.isTrafficSignal && current !== startId) {
+      trafficLights++;
+    }
+
+    var prevEntry = prev.get(current);
+    if (prevEntry) {
+      totalDistance += prevEntry.distance;
+      current = prevEntry.from;
+    } else {
+      break;
+    }
+  }
+
+  path.reverse();
+
+  return {
+    path: path,
+    cost: totalCost,
+    distance: totalDistance,
+    trafficLights: trafficLights,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// app – map UI + event handling
+// ═══════════════════════════════════════════════════════════════════════
+
+(function() {
+  var graph = null;
+  var startMarker = null;
+  var endMarker = null;
+  var routeLine = null;
+  var trafficLightMarkers = [];
+  var startNodeId = null;
+  var endNodeId = null;
+
+  var map = L.map('map').setView([57.7089, 11.9746], 13);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }).addTo(map);
+
+  var startIcon = L.divIcon({
+    className: 'custom-marker',
+    html: '<div style="background:#4CAF50;width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>',
+    iconSize: [14, 14], iconAnchor: [7, 7],
+  });
+
+  var endIcon = L.divIcon({
+    className: 'custom-marker',
+    html: '<div style="background:#F44336;width:14px;height:14px;border-radius:50%;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>',
+    iconSize: [14, 14], iconAnchor: [7, 7],
+  });
+
+  var trafficLightIcon = L.divIcon({
+    className: 'custom-marker',
+    html: '<div style="background:#e53935;width:8px;height:8px;border-radius:50%;opacity:0.7;"></div>',
+    iconSize: [8, 8], iconAnchor: [4, 4],
+  });
+
+  var statusBar = document.getElementById('status-bar');
+  var statusText = document.getElementById('status-text');
+  var btnLoad = document.getElementById('btn-load');
+  var btnClear = document.getElementById('btn-clear');
+  var routeInfo = document.getElementById('route-info');
+  var routeDistance = document.getElementById('route-distance');
+  var routeTime = document.getElementById('route-time');
+  var routeLights = document.getElementById('route-lights');
+  var routeLightPenalty = document.getElementById('route-light-penalty');
+  var lightPenaltyInput = document.getElementById('light-penalty');
+  var showLightsCheckbox = document.getElementById('show-lights');
+
+  function setStatus(text, type) {
+    statusBar.className = type || '';
+    statusText.textContent = text;
+  }
+
+  // ── Network Loading ──────────────────────────────────────────────────
+
+  btnLoad.addEventListener('click', async function() {
+    if (graph) {
+      setStatus('Network already loaded. Clear route or reload the page.', 'success');
+      return;
+    }
+
+    btnLoad.disabled = true;
+
+    try {
+      setStatus('Fetching bike network from OpenStreetMap...', 'loading');
+
+      var elements = await fetchOSMData(GOTHENBURG_BBOX, function(msg) {
+        setStatus(msg, 'loading');
+      });
+
+      setStatus('Received ' + elements.length.toLocaleString() + ' elements. Building graph...', 'loading');
+
+      graph = buildGraph(elements, function(msg) {
+        setStatus(msg, 'loading');
+      });
+
+      setStatus(
+        'Ready! ' + graph.trafficSignalIds.size.toLocaleString() + ' traffic lights loaded. ' +
+        'Click the map to set start point.',
+        'success'
+      );
+
+      if (showLightsCheckbox.checked) showTrafficLights();
+    } catch (err) {
+      console.error('Failed to load network:', err);
+      setStatus('Error: ' + err.message, 'error');
+      btnLoad.disabled = false;
+    }
+  });
+
+  // ── Traffic Light Display ────────────────────────────────────────────
+
+  function showTrafficLights() {
+    clearTrafficLightMarkers();
+    if (!graph) return;
+    for (var id of graph.trafficSignalIds) {
+      var node = graph.nodes.get(id);
+      if (node) {
+        var marker = L.marker([node.lat, node.lon], { icon: trafficLightIcon, interactive: false });
+        marker.addTo(map);
+        trafficLightMarkers.push(marker);
+      }
+    }
+  }
+
+  function clearTrafficLightMarkers() {
+    for (var i = 0; i < trafficLightMarkers.length; i++) {
+      map.removeLayer(trafficLightMarkers[i]);
+    }
+    trafficLightMarkers = [];
+  }
+
+  showLightsCheckbox.addEventListener('change', function() {
+    if (showLightsCheckbox.checked) { showTrafficLights(); }
+    else { clearTrafficLightMarkers(); }
+  });
+
+  // ── Map Click ────────────────────────────────────────────────────────
+
+  map.on('click', function(e) {
+    if (!graph) {
+      setStatus('Load the network first by clicking "Load Network".', 'error');
+      return;
+    }
+
+    var lat = e.latlng.lat;
+    var lng = e.latlng.lng;
+
+    if (!startMarker) {
+      var nearest = findNearestNode(graph.nodes, graph.adjacency, lat, lng);
+      if (!nearest.id || nearest.distance > 1000) {
+        setStatus('No road found nearby. Try clicking closer to a street.', 'error');
+        return;
+      }
+      startNodeId = nearest.id;
+      var node = graph.nodes.get(startNodeId);
+      startMarker = L.marker([node.lat, node.lon], { icon: startIcon })
+        .addTo(map).bindPopup('Start').openPopup();
+      setStatus('Start set. Click the map to set destination.', 'success');
+    } else if (!endMarker) {
+      var nearest = findNearestNode(graph.nodes, graph.adjacency, lat, lng);
+      if (!nearest.id || nearest.distance > 1000) {
+        setStatus('No road found nearby. Try clicking closer to a street.', 'error');
+        return;
+      }
+      endNodeId = nearest.id;
+      var node = graph.nodes.get(endNodeId);
+      endMarker = L.marker([node.lat, node.lon], { icon: endIcon })
+        .addTo(map).bindPopup('Destination');
+      computeRoute();
+    }
+  });
+
+  // ── Route Computation ────────────────────────────────────────────────
+
+  function computeRoute() {
+    if (!graph || startNodeId === null || endNodeId === null) return;
+
+    setStatus('Computing route...', 'loading');
+
+    var penalty = parseInt(lightPenaltyInput.value, 10) || 60;
+
+    setTimeout(function() {
+      var t0 = performance.now();
+      var result = findRoute(graph.nodes, graph.adjacency, startNodeId, endNodeId, penalty);
+      var t1 = performance.now();
+
+      if (!result) {
+        setStatus('No route found between these points.', 'error');
+        return;
+      }
+
+      if (routeLine) map.removeLayer(routeLine);
+
+      var latlngs = result.path.map(function(p) { return [p.lat, p.lon]; });
+      routeLine = L.polyline(latlngs, {
+        color: '#2196F3', weight: 5, opacity: 0.85,
+      }).addTo(map);
+
+      map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+
+      routeInfo.classList.remove('hidden');
+      routeDistance.textContent = formatDistance(result.distance);
+      routeTime.textContent = formatTime(result.cost);
+      routeLights.textContent = result.trafficLights.toString();
+      routeLightPenalty.textContent = formatTime(result.trafficLights * penalty);
+
+      setStatus(
+        'Route found in ' + (t1 - t0).toFixed(0) + 'ms. ' +
+        formatDistance(result.distance) + ', ~' + formatTime(result.cost),
+        'success'
+      );
+    }, 10);
+  }
+
+  lightPenaltyInput.addEventListener('change', function() {
+    if (startNodeId !== null && endNodeId !== null && graph) computeRoute();
+  });
+
+  // ── Clear Route ──────────────────────────────────────────────────────
+
+  btnClear.addEventListener('click', function() {
+    if (startMarker) { map.removeLayer(startMarker); startMarker = null; }
+    if (endMarker) { map.removeLayer(endMarker); endMarker = null; }
+    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+    startNodeId = null;
+    endNodeId = null;
+    routeInfo.classList.add('hidden');
+
+    if (graph) {
+      setStatus('Route cleared. Click the map to set a new start point.', 'success');
+    } else {
+      setStatus('Click "Load Network" to get started.', '');
+    }
+  });
+})();
+  </script>
 </body>
 </html>
