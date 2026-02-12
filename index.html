@@ -456,11 +456,51 @@ function buildGraph(elements, onProgress) {
     }
   }
 
+  // Propagate traffic signal flags to nearby routing nodes.
+  // In OSM, traffic signals sit on road nodes, but dedicated cycleways
+  // use separate nodes at the same intersection.  A spatial proximity
+  // check ensures the penalty is applied even on parallel bike paths.
+  var SIGNAL_PROXIMITY = 25; // meters
+  var CELL_SIZE = 0.0003;    // ~30 m in degrees at ~57° N
+
+  var signalGrid = {};
+  for (var id of trafficSignalIds) {
+    var sig = nodes.get(id);
+    if (!sig) continue;
+    var key = Math.floor(sig.lat / CELL_SIZE) + ',' + Math.floor(sig.lon / CELL_SIZE);
+    if (!signalGrid[key]) signalGrid[key] = [];
+    signalGrid[key].push(sig);
+  }
+
+  var propagated = 0;
+  for (var [nodeId] of adjacency) {
+    var nd = nodes.get(nodeId);
+    if (!nd || nd.isTrafficSignal) continue;
+
+    var bLat = Math.floor(nd.lat / CELL_SIZE);
+    var bLon = Math.floor(nd.lon / CELL_SIZE);
+
+    for (var dlat = -1; dlat <= 1 && !nd.isTrafficSignal; dlat++) {
+      for (var dlon = -1; dlon <= 1 && !nd.isTrafficSignal; dlon++) {
+        var nearby = signalGrid[(bLat + dlat) + ',' + (bLon + dlon)];
+        if (!nearby) continue;
+        for (var s = 0; s < nearby.length; s++) {
+          if (haversine(nd.lat, nd.lon, nearby[s].lat, nearby[s].lon) < SIGNAL_PROXIMITY) {
+            nd.isTrafficSignal = true;
+            propagated++;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   if (onProgress) {
     onProgress(
       'Graph built: ' + nodes.size.toLocaleString() + ' nodes, ' +
       edgeCount.toLocaleString() + ' edges, ' +
-      trafficSignalIds.size.toLocaleString() + ' traffic lights'
+      trafficSignalIds.size.toLocaleString() + ' traffic lights' +
+      (propagated ? ' (' + propagated + ' matched to bike network)' : '')
     );
   }
 
